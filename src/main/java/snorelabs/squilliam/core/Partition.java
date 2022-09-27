@@ -1,15 +1,15 @@
 package snorelabs.squilliam.core;
 
-import io.vavr.collection.Array;
+import java.util.List;
 
 public class Partition {
-    private Array<DynamoAggregate> aggregates;
+    private List<DynamoAggregate> aggregates;
 
-    public Partition(Array<DynamoAggregate> aggregates) {
+    public Partition(List<DynamoAggregate> aggregates) {
         this.aggregates = aggregates;
     }
 
-    public Array<DynamoAggregate> getAggregates() {
+    public List<DynamoAggregate> getAggregates() {
         return aggregates;
     }
 }

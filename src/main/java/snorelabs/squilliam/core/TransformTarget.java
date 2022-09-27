@@ -1,12 +1,12 @@
 package snorelabs.squilliam.core;
 
-import io.vavr.collection.HashMap;
+import java.util.Map;
 
 public class TransformTarget<T> {
     private Class<T> model;
-    private HashMap<String, Relation> relations;
+    private Map<String, Relation> relations;
 
-    public TransformTarget(Class<T> model, HashMap<String, Relation> relations) {
+    public TransformTarget(Class<T> model, Map<String, Relation> relations) {
         this.model = model;
         this.relations = relations;
     }
@@ -15,7 +15,7 @@ public class TransformTarget<T> {
         return model;
     }
 
-    public HashMap<String, Relation> getRelations() {
+    public Map<String, Relation> getRelations() {
         return relations;
     }
 }

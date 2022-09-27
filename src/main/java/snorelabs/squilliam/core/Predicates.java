@@ -26,4 +26,8 @@ public class Predicates {
     public static boolean hasAnnotation(Field field, Class<? extends Annotation> annotation) {
         return field.isAnnotationPresent(annotation);
     }
+
+    public static boolean isItemType(DynamoAggregate aggregate, String itemType) {
+        return aggregate.getItemType().equals(itemType);
+    }
 }

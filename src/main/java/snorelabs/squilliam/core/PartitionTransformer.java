@@ -1,14 +1,14 @@
 package snorelabs.squilliam.core;
 
-import io.vavr.collection.Array;
-import io.vavr.collection.HashMap;
-import io.vavr.control.Option;
-import io.vavr.control.Try;
 import snorelabs.squilliam.core.annotations.ItemType;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
-import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static snorelabs.squilliam.core.Predicates.*;
 
@@ -24,9 +24,8 @@ public class PartitionTransformer {
      *     root = instance(find(root_type, partition))
      * else:
      *     root = default()
-     * for agg, field in intersect(partition, target):
-     *     member = instance(agg)
-     *     root.set(field, member)
+     * for member, field in zip(partition, target):
+     *     field.set(root, member)
      * return root
      *=============================================================================================
      * This presents an interesting caveat, fields will only be set in the case that they have
@@ -37,136 +36,91 @@ public class PartitionTransformer {
      * @return An instance of the root class with the related fields set.
      * @param <T> Class of the desired target instance
      */
-    public static <T> Try<T> transform(Partition partition, TransformTarget<T> target) {
-        return aggregateRoot(partition, target)
-                .flatMap(agg -> addAll(agg.getRootInstance(), agg.getMembers()));
+    public static <T> T transform(Partition partition, TransformTarget<T> target) {
+        T root = rootInstance(partition, target.getModel());
+        for (RootMember member : zip(partition.getAggregates(), target.getRelations())) {
+            setMember(root, member);
+        }
+        return root;
     }
 
     /**
-     * Adds all members to the root instance.
+     * Creates an instance of the target, either using a record from the partition or the default
+     * constructor of the class.
      */
-    private static <T> Try<T> addAll(T root, Array<RootMember> members) {
-        return members.foldLeft(Try.success(root), PartitionTransformer::add);
-
+    private static <T> T rootInstance(Partition partition, Class<T> targetClass) {
+        return isInDynamo(targetClass)
+                ? instanceFromPartition(partition, targetClass)
+                : defaultInstance(targetClass);
     }
 
     /**
-     * Maps the provided Try wrapped root instance to one with the additional root member set.
+     * Creates instance using item type from partition.
      */
-    private static <T> Try<T> add(Try<T> tryRoot, RootMember member) {
-        return tryRoot.flatMap(root -> setMember(root, member));
-    }
-
-    /**
-     * Sets the value of the root member for the associated field on the root.
-     */
-    private static <T> Try<T> setMember(T root, RootMember member) {
-        return Try.run(() -> member.getField().set(root, member.getVal()))
-                .map(__ -> root);
-    }
-
-    /**
-     * Attempts to find a required item in the DynamoDB Partition. Returns a failure in the case of
-     * no item found or the retrieved aggregate having more than one item.
-     */
-    private static Try<HashMap<String, AttributeValue>> findRequired(Partition partition,
-                                                                     String itemType) {
-        return find(partition, itemType)
+    private static <T> T instanceFromPartition(Partition partition, Class<T> targetClass) {
+        return find(partition.getAggregates(), dynamoItemType(targetClass))
                 .filter(Predicates::isSingular)
-                .map(aggregate -> aggregate.getDynamoItems().head())
-                .map(Try::success)
-                .getOrElse(Try.failure(new RuntimeException("Issue in partition")));
+                .map(agg -> instance(agg.getDynamoItems().get(0), targetClass))
+                .orElseThrow(() -> new PartitionException("Missing required root item", partition));
     }
 
     /**
-     * Attempts to find a provided item type in the DynamoDB Partition.
+     * Creates an instance of the target class using the default constructor.
      */
-    private static Option<DynamoAggregate> find(Partition partition, String itemType) {
-        return partition.getAggregates()
-                .find(aggregate -> aggregate.getItemType().equals(itemType));
-    }
-
-    private static <T> Try<AggregateRoot<T>> aggregateRoot(Partition partition,
-                                                           TransformTarget<T> target) {
-        Array<RootMember> members = intersect(partition, target.getRelations());
-        return targetInstance(partition, target)
-                .map(root -> new AggregateRoot<>(root, members));
-    }
-
-    /**
-     * Computes the intersection of the provided DynamoDB data and target model relations. This
-     * is expressed as an array of RootMember instances.
-     */
-    private static <T> Array<RootMember> intersect(Partition partition,
-                                                   HashMap<String, Relation> relations) {
-        return partition.getAggregates()
-                .foldLeft(Array.empty(), (members, agg) -> findAndAppend(members, relations, agg));
+    private static <T> T defaultInstance(Class<T> targetClass) {
+        try {
+            return targetClass.getDeclaredConstructor().newInstance();
+        } catch (InvocationTargetException
+                 | InstantiationException
+                 | IllegalAccessException
+                 | NoSuchMethodException e) {
+            throw new InstanceException("Unable to create instance of target", targetClass, e);
+        }
     }
 
     /**
-     * Attempts to find an applicable relation for the provided Dynamo data and appends a new
-     * root member for it if available. Otherwise, it returns the provided Array.
+     * Finds a DynamoAggregate of the matching item type.
      */
-    private static Array<RootMember> findAndAppend(Array<RootMember> members,
-                                                   HashMap<String, Relation> relations,
-                                                   DynamoAggregate agg) {
-        return find(relations, agg)
-                .map(r -> append(members, r.getField(), r.getModel(), agg))
-                .getOrElse(members);
+    private static Optional<DynamoAggregate> find(List<DynamoAggregate> aggregates, String itemType) {
+        return aggregates.stream()
+                .filter(aggregate -> isItemType(aggregate, itemType))
+                .findFirst();
     }
 
     /**
-     * Returns a concatenation of the provided members and a new root member for the field, model,
-     * and dynamo data.
+     * Merges the dynamo aggregates from a partition with the relations defined by the target class
      */
-    private static Array<RootMember> append(Array<RootMember> members, Field field,
-                                            Class<?> model, DynamoAggregate agg) {
-        return members.append(rootMember(agg.getDynamoItems(), field, model));
+    private static List<RootMember> zip(List<DynamoAggregate> aggregates,
+                                        Map<String, Relation> relations) {
+        return aggregates.stream()
+                .filter(aggregate -> relations.containsKey(aggregate.getItemType()))
+                .map(agg -> rootMember(agg.getDynamoItems(), relations.get(agg.getItemType())))
+                .collect(Collectors.toList());
     }
 
     /**
-     * Attempts to find the relation for the given dynamo aggregate.
+     * This is a side effect method which reflectively sets the value onto the field of the
+     * provided root instance. Although unfortunate, Java doesn't natively support creating new
+     * instances with the additional field set without the client implementing a builder for it.
      */
-    private static Option<Relation> find(HashMap<String, Relation> relations,
-                                         DynamoAggregate aggregate) {
-        return relations.get(aggregate.getItemType());
+    private static <T> void setMember(T root, RootMember member) {
+        try {
+            member.getField().setAccessible(true);
+            member.getField().set(root, member.getVal());
+        } catch (IllegalAccessException e) {
+            throw new InstanceException("Unable to assign field", root.getClass(), e);
+        }
     }
 
     /**
      * Creates a root member. Root members can either be aggregates or singular so this method
      * will check the determination and create a single instance or array.
      */
-    private static RootMember rootMember(Array<HashMap<String, AttributeValue>> items,
-                                         Field field, Class<?> model) {
-        return isManyAnnotated(field)
-                ? new RootMember(field, instances(items, model))
-                : new RootMember(field, instance(items.head(), model));
-    }
-
-    /**
-     * Creates an instance for the transform target, either as a default instance or with an
-     * associated DynamoDB record
-     */
-    private static <T> Try<T> targetInstance(Partition partition, TransformTarget<T> target) {
-        return isInDynamo(target.getModel())
-                ? instanceFromPartition(partition, target.getModel())
-                : defaultInstance(target.getModel());
-    }
-
-    /**
-     * Attempts to create an instance of the desired class with data from the partition. Requires
-     * that the instance class has an associated item type.
-     */
-    private static <T> Try<T> instanceFromPartition(Partition partition, Class<T> instanceClass) {
-        return findRequired(partition, dynamoItemType(instanceClass))
-                .map(dynamoItem -> instance(dynamoItem, instanceClass));
-    }
-
-    /**
-     * Creates a new instance of the specified class with the default constructor.
-     */
-    private static <T> Try<T> defaultInstance(Class<T> model) {
-        return Try.of(() -> model.getDeclaredConstructor().newInstance());
+    private static RootMember rootMember(List<Map<String, AttributeValue>> items,
+                                         Relation relation) {
+        return isManyAnnotated(relation.getField())
+                ? new RootMember(relation.getField(), instances(items, relation.getModel()))
+                : new RootMember(relation.getField(), instance(items.get(0), relation.getModel()));
     }
 
     /**
@@ -179,24 +133,24 @@ public class PartitionTransformer {
     /**
      * Creates an array of instances of the target model from the provided DynamoDB data.
      */
-    private static <T> Array<T> instances(Array<HashMap<String, AttributeValue>> vals,
-                                          Class<T> model) {
+    private static <T> List<T> instances(List<Map<String, AttributeValue>> vals,
+                                         Class<T> model) {
         TableSchema<T> schema = tableSchema(model);
-        return vals.map(val -> instance(schema, val));
+        return vals.stream().map(val -> instance(schema, val)).collect(Collectors.toList());
     }
 
     /**
      * Creates an instance of the desired model using the provided DynamoDB data.
      */
-    private static <T> T instance(HashMap<String, AttributeValue> val, Class<T> model) {
+    private static <T> T instance(Map<String, AttributeValue> val, Class<T> model) {
         return instance(tableSchema(model), val);
     }
 
     /**
      * Builds an instance of the target model using the provided schema and Dynamo data.
      */
-    private static <T> T instance(TableSchema<T> schema, HashMap<String, AttributeValue> val) {
-        return schema.mapToItem(val.toJavaMap());
+    private static <T> T instance(TableSchema<T> schema, Map<String, AttributeValue> val) {
+        return schema.mapToItem(val);
     }
 
     /**

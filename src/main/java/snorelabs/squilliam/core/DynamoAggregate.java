@@ -1,14 +1,15 @@
 package snorelabs.squilliam.core;
 
-import io.vavr.collection.Array;
-import io.vavr.collection.HashMap;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
+import java.util.List;
+import java.util.Map;
+
 public class DynamoAggregate {
-    private Array<HashMap<String, AttributeValue>> dynamoItems;
+    private List<Map<String, AttributeValue>> dynamoItems;
     private String itemType;
 
-    public DynamoAggregate(String itemType, Array<HashMap<String, AttributeValue>> dynamoItems) {
+    public DynamoAggregate(String itemType, List<Map<String, AttributeValue>> dynamoItems) {
         this.itemType = itemType;
         this.dynamoItems = dynamoItems;
     }
@@ -17,7 +18,7 @@ public class DynamoAggregate {
         return itemType;
     }
 
-    public Array<HashMap<String, AttributeValue>> getDynamoItems() {
+    public List<Map<String, AttributeValue>> getDynamoItems() {
         return dynamoItems;
     }
 }
