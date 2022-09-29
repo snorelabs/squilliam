@@ -8,9 +8,10 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbParti
 
 import java.util.List;
 
-@ItemType("Root")
+@ItemType(DynamoRoot.ITEM_TYPE)
 @DynamoDbBean
 public class DynamoRoot {
+    public static final String ITEM_TYPE = "Root";
     @HasMany
     private List<TwoFieldMember> members;
 

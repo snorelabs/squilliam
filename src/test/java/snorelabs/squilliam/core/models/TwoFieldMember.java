@@ -5,9 +5,10 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttri
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
-@ItemType("TwoField")
+@ItemType(TwoFieldMember.ITEM_TYPE)
 @DynamoDbBean
 public class TwoFieldMember {
+    public static final String ITEM_TYPE = "TwoField";
     private String val1;
     private int val2;
 

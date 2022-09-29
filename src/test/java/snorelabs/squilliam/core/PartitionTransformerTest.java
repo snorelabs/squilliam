@@ -8,7 +8,6 @@ import snorelabs.squilliam.core.models.NonDynamoRoot;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
@@ -23,7 +22,7 @@ public class PartitionTransformerTest {
         // Creates an empty Dynamo partition, as if a query returned no data, and a target model
         // for a "Blank" class.
         Partition partition = new Partition(List.of());
-        TransformTarget<Blank> targetModel = new TransformTarget<>(Blank.class, Map.of());
+        TransformTarget<Blank> targetModel = TargetDescriptor.describe(Blank.class);
 
         Blank defaultBlank = PartitionTransformer.transform(partition, targetModel);
 
@@ -33,7 +32,7 @@ public class PartitionTransformerTest {
     }
 
     @Test
-    public void nonDynamoAggregate() throws NoSuchFieldException {
+    public void nonDynamoAggregate() {
         // This simulates creating an instance of a class with an aggregate member
         // which is not itself a DynamoDB item.
         // We create two members first and their dynamo representation (a Partition)
@@ -46,14 +45,10 @@ public class PartitionTransformerTest {
                 schema.itemToMap(member1, false),
                 schema.itemToMap(member2, false)
         );
-        Partition partition = new Partition(List.of(new DynamoAggregate("TwoField", dynamoItems)));
-
-        // Create the TransformTarget representation for the NonItemRoot class.
-        Field membersField = NonDynamoRoot.class.getDeclaredField("members");
-
-        Map<String, Relation> relationMap = Map.of("TwoField", new Relation(TwoFieldMember.class, membersField));
-
-        TransformTarget<NonDynamoRoot> targetModel = new TransformTarget<>(NonDynamoRoot.class, relationMap);
+        Partition partition = new Partition(
+                List.of(new DynamoAggregate(TwoFieldMember.ITEM_TYPE, dynamoItems))
+        );
+        TransformTarget<NonDynamoRoot> targetModel = TargetDescriptor.describe(NonDynamoRoot.class);
 
         // Transform the partition and target model into a NonItemRoot.
         NonDynamoRoot nonDynamoRoot = PartitionTransformer.transform(partition, targetModel);
@@ -65,7 +60,7 @@ public class PartitionTransformerTest {
     }
 
     @Test
-    public void dynamoAggregate() throws NoSuchFieldException {
+    public void dynamoAggregate() {
         TwoFieldMember member1 = new TwoFieldMember("A", 1);
         TwoFieldMember member2 = new TwoFieldMember("B", 2);
 
@@ -82,18 +77,12 @@ public class PartitionTransformerTest {
         List<Map<String, AttributeValue>> rootItems = List.of(rootSchema.itemToMap(root, false));
 
         List<DynamoAggregate> aggs = List.of(
-                new DynamoAggregate("TwoField", memberItems),
-                new DynamoAggregate("Root", rootItems)
+                new DynamoAggregate(TwoFieldMember.ITEM_TYPE, memberItems),
+                new DynamoAggregate(DynamoRoot.ITEM_TYPE, rootItems)
         );
 
         Partition partition = new Partition(aggs);
-
-        // Create the TransformTarget representation for the NonItemRoot class.
-        Field membersField = DynamoRoot.class.getDeclaredField("members");
-
-        Map<String, Relation> relationMap = Map.of("TwoField", new Relation(TwoFieldMember.class, membersField));
-
-        TransformTarget<DynamoRoot> targetModel = new TransformTarget<>(DynamoRoot.class, relationMap);
+        TransformTarget<DynamoRoot> targetModel = TargetDescriptor.describe(DynamoRoot.class);
 
         DynamoRoot retrieved = PartitionTransformer.transform(partition, targetModel);
 
