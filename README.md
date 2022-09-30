@@ -38,22 +38,41 @@ So, how do we make this any better? Well, annotations which describe the relatio
 might have _after_ it comes back from DynamoDb!
 
 ```java
-@ItemType("Employee")
 @DynamoDbBean
 public class Employee {
+    public static final String ITEM_TYPE = "EMPLOYEE";
     // ...
+    @DynamoDbAttribute("EmployeeId")
+    public String getEmployeeId() {
+        return employeeId;
+    }
+
+    @ItemType(Employee.ITEM_TYPE)
+    @DynamoDbAttribute("ItemType")
+    public String getItemType() {
+        return ITEM_TYPE;
+    }
 }
 
-@ItemType("Manager")
 @DynamoDbBean
 public class Manager {
+    public static final String ITEM_TYPE = "MANAGER";
     // ...
+    @DynamoDbAttribute("ManagerId")
+    public String getManagerId() {
+        return managerId;
+    }
+
+    @ItemType(Manager.ITEM_TYPE)
+    @DynamoDbAttribute("ItemType")
+    public String getItemType() {
+        return ITEM_TYPE;
+    }
     
-    // Additionally, your Manager class could have many employees
-    // and you could use it as a root!
-    
+    // Alternatively you could use Manager as the root and have employees on it!
     // @HasMany
-    // Array<Employee> employees;
+    // private List<Employee> employees;
+    // ^ These would be separately serialized and deserialized automagically
 }
 
 public class Team {
@@ -61,14 +80,14 @@ public class Team {
     Manager manager;
 
     @HasMany
-    Array<Employee> employees;
+    List<Employee> employees;
 }
 
 public class TeamService {
     public Team getTeam() {
         // Currently, you define what you'd like to query on (but not for long ;)
         QueryRequest query;
-        
+
         // AND THEN MAGIC!!!
         Team team = squilliam.load(query, Team.class);
     }
@@ -77,7 +96,7 @@ public class TeamService {
 
 ## Unfortunately, It's Not Ready
 
-Currently, the partition transformation process has a rough V0. Building the Target Model information
-and querying, hand off functionality to let you use anything native, and serializing all this data for
+Currently there is a rough V0 for model description, partition aggregation, and transformation.
+Querying, hand off functionality to let you use anything native, and serializing all this data for
 you is still to come. This will probably take another few weeks (ETA late October 2022). The harder
 part is going to be intelligent relationship determination, Query building, and Immutable support.
