@@ -1,7 +1,5 @@
 package snorelabs.squilliam.core;
 
-import snorelabs.squilliam.core.annotations.ItemType;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.util.*;
@@ -10,7 +8,7 @@ import java.util.stream.Stream;
 
 import static snorelabs.squilliam.core.Predicates.isManyAnnotated;
 
-public class TargetDescriptor {
+public class TargetDescriber {
     /**
      * This method reflectively describes the target class. The process is fairly straightforward,
      * we iterate through the inheritance chain and retrieve all fields which are relation
@@ -25,8 +23,8 @@ public class TargetDescriptor {
      */
     public static Map<String, Relation> allRelations(Class<?> targetClass) {
         return relationFields(targetClass)
-                .map(TargetDescriptor::relation)
-                .collect(Collectors.toMap(r -> itemType(r.getModel()), r -> r));
+                .map(TargetDescriber::relation)
+                .collect(Collectors.toMap(r -> Shenanigans.dynamoItemType(r.getModel()), r -> r));
     }
 
     /**
@@ -34,21 +32,7 @@ public class TargetDescriptor {
      * records in Dynamo, marked on the model by the appropriate relation annotation
      */
     private static Stream<Field> relationFields(Class<?> targetClass) {
-        return allFields(targetClass).filter(Predicates::isRelationship);
-    }
-
-    /**
-     * Gets all declared fields of the target class and follows up the inheritance chain to get
-     * all fields of every base class.
-     */
-    private static Stream<Field> allFields(Class<?> targetClass) {
-        Stream<Field> fields = Stream.of();
-        Class<?> currClass = targetClass;
-        while (!Objects.isNull(currClass)) {
-            fields = Stream.concat(fields, Stream.of(currClass.getDeclaredFields()));
-            currClass = currClass.getSuperclass();
-        }
-        return fields;
+        return Shenanigans.allFields(targetClass).filter(Predicates::isRelationship);
     }
 
     /**
@@ -74,11 +58,4 @@ public class TargetDescriptor {
         return (Class<?>) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
     }
 
-    /**
-     * Gets the item type for a given class.
-     * TODO: This is overlapping reflection/annotation shenanigans which should be refactored.
-     */
-    public static String itemType(Class<?> itemClass) {
-        return itemClass.getAnnotation(ItemType.class).value();
-    }
 }

@@ -8,20 +8,23 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbParti
 
 import java.util.List;
 
-@ItemType(DynamoRoot.ITEM_TYPE)
 @DynamoDbBean
 public class DynamoRoot {
     public static final String ITEM_TYPE = "Root";
     @HasMany
     private List<TwoFieldMember> members;
+    @ItemType(DynamoRoot.ITEM_TYPE)
+    private String itemType;
 
     private String example;
 
     public DynamoRoot() {
+        this.itemType = ITEM_TYPE;
     }
 
     public DynamoRoot(String example) {
         this.example = example;
+        this.itemType = ITEM_TYPE;
     }
 
     @DynamoDbPartitionKey
@@ -30,8 +33,17 @@ public class DynamoRoot {
         return example;
     }
 
+    @DynamoDbAttribute("ItemType")
+    public String getItemType() {
+        return itemType;
+    }
+
     public void setExample(String example) {
         this.example = example;
+    }
+
+    public void setItemType(String itemType) {
+        this.itemType = itemType;
     }
 
     public List<TwoFieldMember> getMembers() {

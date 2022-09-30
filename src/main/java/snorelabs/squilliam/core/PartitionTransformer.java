@@ -1,10 +1,8 @@
 package snorelabs.squilliam.core;
 
-import snorelabs.squilliam.core.annotations.ItemType;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,7 +37,7 @@ public class PartitionTransformer {
     public static <T> T transform(Partition partition, TransformTarget<T> target) {
         T root = rootInstance(partition, target.getModel());
         for (RootMember member : zip(partition.getAggregates(), target.getRelations())) {
-            setMember(root, member);
+            Shenanigans.setMember(root, member.getField(), member.getVal());
         }
         return root;
     }
@@ -51,31 +49,17 @@ public class PartitionTransformer {
     private static <T> T rootInstance(Partition partition, Class<T> targetClass) {
         return isInDynamo(targetClass)
                 ? instanceFromPartition(partition, targetClass)
-                : defaultInstance(targetClass);
+                : Shenanigans.defaultInstance(targetClass);
     }
 
     /**
      * Creates instance using item type from partition.
      */
     private static <T> T instanceFromPartition(Partition partition, Class<T> targetClass) {
-        return find(partition.getAggregates(), dynamoItemType(targetClass))
+        return find(partition.getAggregates(), Shenanigans.dynamoItemType(targetClass))
                 .filter(Predicates::isSingular)
                 .map(agg -> instance(agg.getDynamoItems().get(0), targetClass))
                 .orElseThrow(() -> new PartitionException("Missing required root item", partition));
-    }
-
-    /**
-     * Creates an instance of the target class using the default constructor.
-     */
-    private static <T> T defaultInstance(Class<T> targetClass) {
-        try {
-            return targetClass.getDeclaredConstructor().newInstance();
-        } catch (InvocationTargetException
-                 | InstantiationException
-                 | IllegalAccessException
-                 | NoSuchMethodException e) {
-            throw new InstanceException("Unable to create instance of target", targetClass, e);
-        }
     }
 
     /**
@@ -99,20 +83,6 @@ public class PartitionTransformer {
     }
 
     /**
-     * This is a side effect method which reflectively sets the value onto the field of the
-     * provided root instance. Although unfortunate, Java doesn't natively support creating new
-     * instances with the additional field set without the client implementing a builder for it.
-     */
-    private static <T> void setMember(T root, RootMember member) {
-        try {
-            member.getField().setAccessible(true);
-            member.getField().set(root, member.getVal());
-        } catch (IllegalAccessException e) {
-            throw new InstanceException("Unable to assign field", root.getClass(), e);
-        }
-    }
-
-    /**
      * Creates a root member. Root members can either be aggregates or singular so this method
      * will check the determination and create a single instance or array.
      */
@@ -121,13 +91,6 @@ public class PartitionTransformer {
         return isManyAnnotated(relation.getField())
                 ? new RootMember(relation.getField(), instances(items, relation.getModel()))
                 : new RootMember(relation.getField(), instance(items.get(0), relation.getModel()));
-    }
-
-    /**
-     * Gets the item type string (used to identify what type of item the dynamo record is)
-     */
-    private static String dynamoItemType(Class<?> item) {
-        return item.getAnnotation(ItemType.class).value();
     }
 
     /**

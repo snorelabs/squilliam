@@ -3,6 +3,7 @@ package snorelabs.squilliam.core;
 import snorelabs.squilliam.core.annotations.HasMany;
 import snorelabs.squilliam.core.annotations.HasOne;
 import snorelabs.squilliam.core.annotations.ItemType;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -17,7 +18,11 @@ public class Predicates {
     }
 
     public static boolean isInDynamo(Class<?> item) {
-        return hasAnnotation(item, ItemType.class);
+        return hasAnnotation(item, DynamoDbBean.class);
+    }
+
+    public static boolean isItemIdentifier(Field field) {
+        return hasAnnotation(field, ItemType.class);
     }
 
     public static boolean isManyAnnotated(Field field) {

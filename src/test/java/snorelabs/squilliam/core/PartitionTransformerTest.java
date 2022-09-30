@@ -8,6 +8,7 @@ import snorelabs.squilliam.core.models.NonDynamoRoot;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +23,7 @@ public class PartitionTransformerTest {
         // Creates an empty Dynamo partition, as if a query returned no data, and a target model
         // for a "Blank" class.
         Partition partition = new Partition(List.of());
-        TransformTarget<Blank> targetModel = TargetDescriptor.describe(Blank.class);
+        TransformTarget<Blank> targetModel = TargetDescriber.describe(Blank.class);
 
         Blank defaultBlank = PartitionTransformer.transform(partition, targetModel);
 
@@ -45,10 +46,8 @@ public class PartitionTransformerTest {
                 schema.itemToMap(member1, false),
                 schema.itemToMap(member2, false)
         );
-        Partition partition = new Partition(
-                List.of(new DynamoAggregate(TwoFieldMember.ITEM_TYPE, dynamoItems))
-        );
-        TransformTarget<NonDynamoRoot> targetModel = TargetDescriptor.describe(NonDynamoRoot.class);
+        Partition partition = PartitionAggregator.aggregate("ItemType", dynamoItems);
+        TransformTarget<NonDynamoRoot> targetModel = TargetDescriber.describe(NonDynamoRoot.class);
 
         // Transform the partition and target model into a NonItemRoot.
         NonDynamoRoot nonDynamoRoot = PartitionTransformer.transform(partition, targetModel);
@@ -69,20 +68,15 @@ public class PartitionTransformerTest {
         TableSchema<TwoFieldMember> memberSchema = TableSchema.fromClass(TwoFieldMember.class);
         TableSchema<DynamoRoot> rootSchema = TableSchema.fromClass(DynamoRoot.class);
 
-        List<Map<String, AttributeValue>> memberItems = List.of(
+        List<Map<String, AttributeValue>> allItems = List.of(
                 memberSchema.itemToMap(member1, false),
-                memberSchema.itemToMap(member2, false)
+                memberSchema.itemToMap(member2, false),
+                rootSchema.itemToMap(root, false)
         );
 
-        List<Map<String, AttributeValue>> rootItems = List.of(rootSchema.itemToMap(root, false));
+        Partition partition = PartitionAggregator.aggregate("ItemType", allItems);
 
-        List<DynamoAggregate> aggs = List.of(
-                new DynamoAggregate(TwoFieldMember.ITEM_TYPE, memberItems),
-                new DynamoAggregate(DynamoRoot.ITEM_TYPE, rootItems)
-        );
-
-        Partition partition = new Partition(aggs);
-        TransformTarget<DynamoRoot> targetModel = TargetDescriptor.describe(DynamoRoot.class);
+        TransformTarget<DynamoRoot> targetModel = TargetDescriber.describe(DynamoRoot.class);
 
         DynamoRoot retrieved = PartitionTransformer.transform(partition, targetModel);
 
