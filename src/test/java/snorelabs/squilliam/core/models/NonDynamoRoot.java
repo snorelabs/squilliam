@@ -10,6 +10,10 @@ public class NonDynamoRoot {
 
     public NonDynamoRoot() {}
 
+    public NonDynamoRoot(List<TwoFieldMember> members) {
+        this.members = members;
+    }
+
     public List<TwoFieldMember> getMembers() {
         return members;
     }

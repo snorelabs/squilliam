@@ -8,7 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static snorelabs.squilliam.core.Predicates.*;
+import static snorelabs.squilliam.core.DynamoUtils.tableSchema;
+import static snorelabs.squilliam.core.Predicates.isInDynamo;
+import static snorelabs.squilliam.core.Predicates.isItemType;
+import static snorelabs.squilliam.core.Predicates.isManyAnnotated;
+
 
 public class PartitionTransformer {
     /**
@@ -40,6 +44,14 @@ public class PartitionTransformer {
             Shenanigans.setMember(root, member.getField(), member.getVal());
         }
         return root;
+    }
+
+    /**
+     * Creates an array of instances of the target model from the provided DynamoDB data.
+     */
+    public static <T> List<T> instances(List<Map<String, AttributeValue>> vals, Class<T> model) {
+        TableSchema<T> schema = tableSchema(model);
+        return vals.stream().map(val -> instance(schema, val)).collect(Collectors.toList());
     }
 
     /**
@@ -94,15 +106,6 @@ public class PartitionTransformer {
     }
 
     /**
-     * Creates an array of instances of the target model from the provided DynamoDB data.
-     */
-    private static <T> List<T> instances(List<Map<String, AttributeValue>> vals,
-                                         Class<T> model) {
-        TableSchema<T> schema = tableSchema(model);
-        return vals.stream().map(val -> instance(schema, val)).collect(Collectors.toList());
-    }
-
-    /**
      * Creates an instance of the desired model using the provided DynamoDB data.
      */
     private static <T> T instance(Map<String, AttributeValue> val, Class<T> model) {
@@ -114,12 +117,5 @@ public class PartitionTransformer {
      */
     private static <T> T instance(TableSchema<T> schema, Map<String, AttributeValue> val) {
         return schema.mapToItem(val);
-    }
-
-    /**
-     * Creates a TableSchema for the provided model class
-     */
-    private static <T> TableSchema<T> tableSchema(Class<T> itemClass) {
-        return TableSchema.fromClass(itemClass);
     }
 }
